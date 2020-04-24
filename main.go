@@ -46,9 +46,6 @@ func init() {
 }
 
 func main() {
-	// Make it possible to just print the version or configuration and exit
-	handleDebugArgs()
-
 	var metricsAddr string
 	var enableLeaderElection bool
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
@@ -59,6 +56,9 @@ func main() {
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
 		o.Development = false
 	}))
+
+	// Make it possible to just print the version or configuration and exit
+	handleDebugArgs()
 
 	v := version.GetInfo()
 	setupLog.Info("Red Sky Ops Controller", "version", v.String(), "gitCommit", v.GitCommit)
@@ -139,30 +139,38 @@ func main() {
 
 // handleDebugArgs will make the process dump and exit if the first arg is either "version" or "config"
 func handleDebugArgs() {
-	if len(os.Args) > 1 {
-		if os.Args[1] == "version" {
-			if output, err := json.Marshal(version.GetInfo()); err != nil {
-				os.Exit(1)
-			} else {
-				fmt.Println(string(output))
-				os.Exit(0)
-			}
-		} else if os.Args[1] == "config" {
-			// TODO Host live values from the in-memory configuration at `.../debug/config` instead of this
-			cfg := &config.RedSkyConfig{}
-			if err := cfg.Load(); err != nil {
-				os.Exit(1)
-			}
-			minified, err := config.Minify(cfg.Reader())
-			if err != nil {
-				os.Exit(1)
-			}
-			output, err := json.Marshal(minified)
-			if err != nil {
-				os.Exit(1)
-			}
-			fmt.Println(string(output))
-			os.Exit(0)
-		}
+	if len(os.Args) == 1 {
+		return
 	}
+
+	switch os.Args[1] {
+	case "version":
+		fmt.Println(version.GetInfo().String())
+	case "config":
+		// TODO Host live values from the in-memory configuration at `.../debug/config` instead of this
+		cfg := &config.RedSkyConfig{}
+		if err := cfg.Load(); err != nil {
+			setupLog.Error(err, "failed to load config")
+			os.Exit(1)
+		}
+
+		minified, err := config.Minify(cfg.Reader())
+		if err != nil {
+			setupLog.Error(err, "failed to parse config")
+			os.Exit(1)
+		}
+
+		output, err := json.Marshal(minified)
+		if err != nil {
+			setupLog.Error(err, "failed to marshal config")
+			os.Exit(1)
+		}
+
+		fmt.Println(string(output))
+	default:
+		setupLog.Info("unsupported argument")
+		os.Exit(1)
+	}
+
+	os.Exit(0)
 }
