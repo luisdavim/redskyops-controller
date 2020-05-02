@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-logr/logr"
 	redskyv1alpha1 "github.com/redskyops/redskyops-controller/api/v1alpha1"
@@ -65,27 +64,19 @@ func (r *TrialJobReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		return *result, err
 	}
 
-	// Create a new job if necessary
-	if len(jobList.Items) == 0 {
-		// Insert a "sleep" between "ready" and the trial job
-		if ids := time.Duration(t.Spec.InitialDelaySeconds) * time.Second; ids > 0 {
-			for _, c := range t.Status.Conditions {
-				if c.Type == redskyv1alpha1.TrialReady {
-					startTime := c.LastTransitionTime.Add(ids)
-					if startTime.After(now.Time) {
-						return ctrl.Result{RequeueAfter: startTime.Sub(now.Time)}, nil
-					}
-				}
-			}
-		}
-
-		// Create the trial run job
-		if result, err := r.createJob(ctx, t); result != nil {
-			return *result, err
-		}
+	// Dont create a new job if one exists
+	if len(jobList.Items) != 0 {
+		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{}, nil
+	// Insert a "sleep" between "ready" and when we should create trial job
+	if delay := t.DelayStartTime(); delay > 0 {
+		return ctrl.Result{RequeueAfter: delay}, nil
+	}
+
+	// Create the trial run job
+	result, err := r.createJob(ctx, t)
+	return *result, err
 }
 
 func (r *TrialJobReconciler) SetupWithManager(mgr ctrl.Manager) error {

@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -71,4 +72,27 @@ func (in *Trial) GetJobSelector() *metav1.LabelSelector {
 			LabelTrialRole: "trialRun",
 		},
 	}
+}
+
+func (in *Trial) DelayStartTime() time.Duration {
+	if in.Spec.InitialDelaySeconds == 0 {
+		return 0
+	}
+
+	delay := time.Duration(in.Spec.InitialDelaySeconds) * time.Second
+	var expireTime time.Duration
+
+	for _, c := range in.Status.Conditions {
+		if c.Type != TrialReady {
+			continue
+		}
+
+		delayedStartTime := c.LastTransitionTime.Add(delay)
+
+		if time.Now().Before(delayedStartTime) {
+			expireTime = delayedStartTime.Sub(time.Now())
+		}
+	}
+
+	return expireTime
 }
