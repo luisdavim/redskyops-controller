@@ -20,7 +20,6 @@ import (
 	"context"
 
 	redskyv1alpha1 "github.com/redskyops/redskyops-controller/api/v1alpha1"
-	"github.com/redskyops/redskyops-controller/internal/trial"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +34,7 @@ func NextTrialNamespace(ctx context.Context, c client.Client, exp *redskyv1alpha
 	activeTrials := int32(0)
 	for i := range trialList.Items {
 		t := &trialList.Items[i]
-		if trial.IsActive(t) {
+		if t.IsActive() {
 			activeNamespaces[t.Namespace] = true
 			activeTrials++
 		}

@@ -26,7 +26,6 @@ import (
 	"github.com/redskyops/redskyops-controller/internal/experiment"
 	"github.com/redskyops/redskyops-controller/internal/meta"
 	"github.com/redskyops/redskyops-controller/internal/server"
-	"github.com/redskyops/redskyops-controller/internal/trial"
 	"github.com/redskyops/redskyops-controller/internal/validation"
 	"github.com/redskyops/redskyops-controller/internal/version"
 	redskyapi "github.com/redskyops/redskyops-controller/redskyapi/experiments/v1alpha1"
@@ -85,18 +84,18 @@ func (r *ServerReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		tlog := log.WithValues("trial", t.Namespace+"/"+t.Name)
 
 		// Count active trials
-		if trial.IsActive(t) {
+		if t.IsActive() {
 			activeTrials++
 		}
 
 		// Trials that have the server finalizer may need to be reported
 		if meta.HasFinalizer(t, server.Finalizer) {
 			// TODO Combine report and abandon into one function
-			if trial.IsFinished(t) {
+			if t.IsFinished() {
 				if result, err := r.reportTrial(ctx, tlog, t); result != nil {
 					return *result, err
 				}
-			} else if trial.IsAbandoned(t) {
+			} else if t.IsAbandoned() {
 				if result, err := r.abandonTrial(ctx, tlog, t); result != nil {
 					return *result, err
 				}

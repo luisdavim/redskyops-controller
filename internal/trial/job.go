@@ -69,7 +69,7 @@ func NewJob(t *redskyv1alpha1.Trial) *batchv1.Job {
 	// Expose the current assignments as environment variables to every container (except the default sleep container added below)
 	for i := range job.Spec.Template.Spec.Containers {
 		c := &job.Spec.Template.Spec.Containers[i]
-		c.Env = AppendAssignmentEnv(t, c.Env)
+		c.Env = append(c.Env, t.AssignmentEnv()...)
 	}
 
 	// Containers cannot be empty, inject a sleep by default
@@ -108,7 +108,7 @@ func patchSelf(t *redskyv1alpha1.Trial, job *batchv1.Job) *batchv1.Job {
 	// Look for patch operations that match this trial and apply them
 	for i := range t.Spec.PatchOperations {
 		po := &t.Spec.PatchOperations[i]
-		if IsTrialJobReference(t, &po.TargetRef) && po.PatchType == types.StrategicMergePatchType {
+		if t.IsTrialJobReference(&po.TargetRef) && po.PatchType == types.StrategicMergePatchType {
 			// Ignore errors all the way down, only overwrite the job if everything is successful
 			if original, err := json.Marshal(job); err == nil {
 				j := &batchv1.Job{}

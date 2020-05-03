@@ -19,7 +19,6 @@ package experiment
 import (
 	redskyv1alpha1 "github.com/redskyops/redskyops-controller/api/v1alpha1"
 	"github.com/redskyops/redskyops-controller/internal/controller"
-	"github.com/redskyops/redskyops-controller/internal/trial"
 )
 
 const (
@@ -52,7 +51,7 @@ func UpdateStatus(exp *redskyv1alpha1.Experiment, trialList *redskyv1alpha1.Tria
 	activeTrials := int32(0)
 	for i := range trialList.Items {
 		t := &trialList.Items[i]
-		if trial.IsActive(t) && !trial.IsAbandoned(t) {
+		if t.IsActive() && !t.IsAbandoned() {
 			activeTrials++
 		}
 	}

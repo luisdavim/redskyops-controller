@@ -118,7 +118,7 @@ func (r *ExperimentReconciler) updateTrialStatus(ctx context.Context, trialList 
 		var dirty bool
 
 		// If the trial is not finished, but it has been observed, mark it as complete
-		if !trial.IsFinished(t) && trial.CheckCondition(&t.Status, redskyv1alpha1.TrialObserved, corev1.ConditionTrue) {
+		if !t.IsFinished() && trial.CheckCondition(&t.Status, redskyv1alpha1.TrialObserved, corev1.ConditionTrue) {
 			now := metav1.Now()
 			trial.ApplyCondition(&t.Status, redskyv1alpha1.TrialComplete, corev1.ConditionTrue, "", "", &now)
 			dirty = true
@@ -148,7 +148,7 @@ func (r *ExperimentReconciler) cleanupTrials(ctx context.Context, exp *redskyv1a
 		}
 
 		// Delete trials if they have expired or if the experiment has been deleted
-		if trial.NeedsCleanup(t) || !exp.GetDeletionTimestamp().IsZero() {
+		if t.NeedsCleanup() || !exp.GetDeletionTimestamp().IsZero() {
 			// TODO client.PropagationPolicy(metav1.DeletePropagationBackground) ?
 			if err := r.Delete(ctx, t); err != nil {
 				return &ctrl.Result{}, err

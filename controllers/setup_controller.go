@@ -131,7 +131,7 @@ func (r *SetupReconciler) inspectSetupJobs(ctx context.Context, t *redskyv1alpha
 
 		// Only fail the trial itself if it isn't already finished; both to prevent overwriting an existing success
 		// or failure status and to avoid updating the probe time (which would get us stuck in a busy loop)
-		if failureMessage != "" && !trial.IsFinished(t) {
+		if failureMessage != "" && !t.IsFinished() {
 			trial.ApplyCondition(&t.Status, redskyv1alpha1.TrialFailed, corev1.ConditionTrue, "SetupJobFailed", failureMessage, probeTime)
 		}
 	}
@@ -187,7 +187,7 @@ func (r *SetupReconciler) createSetupJob(ctx context.Context, t *redskyv1alpha1.
 	// If the deleted condition is unknown, we may need a delete job
 	if trial.CheckCondition(&t.Status, redskyv1alpha1.TrialSetupDeleted, corev1.ConditionUnknown) {
 		// We do not need the deleted job until the trial is finished or it gets deleted
-		if trial.IsFinished(t) || !t.DeletionTimestamp.IsZero() {
+		if t.IsFinished() || !t.DeletionTimestamp.IsZero() {
 			mode = setup.ModeDelete
 		}
 	}
@@ -220,7 +220,7 @@ func (r *SetupReconciler) createSetupJob(ctx context.Context, t *redskyv1alpha1.
 func (r *SetupReconciler) finish(ctx context.Context, t *redskyv1alpha1.Trial) (*ctrl.Result, error) {
 	// If the create job isn't finished, wait for it (unless the trial is already finished, i.e. failed)
 	if trial.CheckCondition(&t.Status, redskyv1alpha1.TrialSetupCreated, corev1.ConditionFalse) {
-		if !trial.IsFinished(t) && t.DeletionTimestamp.IsZero() {
+		if !t.IsFinished() && t.DeletionTimestamp.IsZero() {
 			return &ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 		}
 	}

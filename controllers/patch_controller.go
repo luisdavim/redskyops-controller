@@ -274,7 +274,7 @@ func (r *PatchReconciler) createPatchOperation(t *redskyv1alpha1.Trial, p *redsk
 	}
 
 	// If the patch is for the trial job itself, it cannot be applied (since the job won't exist until well after patches are applied)
-	if trial.IsTrialJobReference(t, &po.TargetRef) {
+	if t.IsTrialJobReference(&po.TargetRef) {
 		po.AttemptsRemaining = 0
 		if po.PatchType != types.StrategicMergePatchType {
 			return nil, fmt.Errorf("trial job patch must be a strategic merge patch")
