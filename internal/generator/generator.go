@@ -87,6 +87,7 @@ func main() {
 		zw.Write(data)
 		zw.Close()
 
+		outputBuffer.WriteString("// The below is a gzipped + base64 encoded yaml\n")
 		outputBuffer.WriteString(fmt.Sprintf("var %s = Asset{data: `%s`}\n", variableName, base64.StdEncoding.EncodeToString(buf.Bytes())))
 	}
 

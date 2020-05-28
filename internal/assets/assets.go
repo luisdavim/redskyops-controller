@@ -16,16 +16,27 @@ limitations under the License.
 
 package assets
 
+// Generate updated assets
+
+//go:generate mkdir -p kustomizeTemp
+//go:generate kustomize build ../../config/install -o kustomizeTemp
+
+// Namespace
+//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file kustomizeTemp/~g_v1_namespace_redsky-system.yaml --package assets --output ./namespace.go
+
 // CRD
-//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file ../../config/crd/bases/redskyops.dev_trials.yaml --package assets --output ./trials.go
-//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file ../../config/crd/bases/redskyops.dev_experiments.yaml --package assets --output ./experiments.go
+//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file kustomizeTemp/apiextensions.k8s.io_v1beta1_customresourcedefinition_trials.redskyops.dev.yaml --package assets --output ./trials.go
+//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file kustomizeTemp/apiextensions.k8s.io_v1beta1_customresourcedefinition_experiments.redskyops.dev.yaml --package assets --output ./experiments.go
 
 // RBAC
-//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file ../../config/rbac/rbac_role_binding.yaml --package assets --output ./role_binding.go
-//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file ../../config/rbac/role.yaml --package assets --output ./role.go
+//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file kustomizeTemp/rbac.authorization.k8s.io_v1_clusterrolebinding_redsky-manager-rolebinding.yaml --package assets --output ./role_binding.go
+//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file kustomizeTemp/rbac.authorization.k8s.io_v1_clusterrole_redsky-manager-role.yaml --package assets --output ./role.go
 
 // Deployment
-//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file ../../config/manager/manager.yaml --package assets --output ./deployment.go
+//go:generate go run ../generator/generator.go --header ../../hack/boilerplate.go.txt --file kustomizeTemp/apps_v1_deployment_redsky-controller-manager.yaml --package assets --output ./deployment.go
+
+// Cleanup
+//go:generate rm -r kustomizeTemp
 
 import (
 	"bufio"
@@ -43,6 +54,7 @@ import (
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
@@ -54,6 +66,11 @@ type Asset struct {
 	data    string
 	bytes   []byte
 	objects []runtime.Object
+}
+
+func (a *Asset) Reader() (io.Reader, error) {
+	err := a.decode()
+	return bytes.NewReader(a.bytes), err
 }
 
 func (a *Asset) String() (string, error) {
@@ -95,24 +112,27 @@ func (a *Asset) InjectMetadata(namespace string, labels map[string]string) (data
 
 			m.SetName(fmt.Sprintf("%s-%s", "redsky", m.GetName()))
 
-			// No need to set namespace or labels on these resources
+			updateLabels(m, labels)
+
+			// Handle these kinds with some special TLC
 			switch obj.GetObjectKind().GroupVersionKind().Kind {
-			case "Namespace":
-				return nil
 			case "ClusterRoleBinding":
 				return nil
 			case "ClusterRole":
 				return nil
+			case "Namespace":
+				return nil
+			case "Deployment":
+				// labels for spec.template.metadata
+				podMeta := obj.(*appsv1.Deployment).Spec.Template.ObjectMeta
+				updateLabels(&podMeta, labels)
+
+				// update image
 			}
 
 			m.SetNamespace(namespace)
 
-			metaLabels := m.GetLabels()
-			for k, v := range labels {
-				metaLabels[k] = v
-			}
-
-			m.SetLabels(metaLabels)
+			updateLabels(m, labels)
 
 			return nil
 		}()
@@ -216,4 +236,17 @@ func (a *Asset) kubeObjects() (err error) {
 	a.objects = objs
 
 	return err
+}
+
+func updateLabels(m metav1.Object, labels map[string]string) {
+	metaLabels := m.GetLabels()
+	if metaLabels == nil {
+		metaLabels = make(map[string]string)
+	}
+
+	for k, v := range labels {
+		metaLabels[k] = v
+	}
+
+	m.SetLabels(metaLabels)
 }

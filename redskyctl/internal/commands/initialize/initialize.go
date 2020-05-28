@@ -19,9 +19,13 @@ package initialize
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"os"
 	"sync"
 
+	"github.com/redskyops/redskyops-controller/internal/assets"
+	"github.com/redskyops/redskyops-controller/internal/config"
 	"github.com/redskyops/redskyops-controller/redskyctl/internal/commander"
 	"github.com/redskyops/redskyops-controller/redskyctl/internal/commands/authorize_cluster"
 	"github.com/redskyops/redskyops-controller/redskyctl/internal/commands/grant_permissions"
@@ -37,60 +41,89 @@ type Options struct {
 	IncludeBootstrapRole    bool
 	IncludeExtraPermissions bool
 	NamespaceSelector       string
+	Image                   string
 }
 
+// Potentially inject via build args
+
 // NewCommand creates a command for performing an initialization
-func NewCommand(o *Options) *cobra.Command {
+func NewCommand(cfg *config.RedSkyConfig) *cobra.Command {
+	opts := &Options{
+		GeneratorOptions: GeneratorOptions{
+			Config: cfg,
+		},
+	}
+
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Install to a cluster",
 		Long:  "Install Red Sky Ops to a cluster",
 
-		PreRun: commander.StreamsPreRun(&o.IOStreams),
-		RunE:   commander.WithContextE(o.initialize),
+		PreRun: commander.StreamsPreRun(&opts.IOStreams),
+		RunE:   commander.WithContextE(opts.initialize),
 	}
 
-	cmd.Flags().BoolVar(&o.IncludeBootstrapRole, "bootstrap-role", o.IncludeBootstrapRole, "Create the bootstrap role (if it does not exist).")
-	cmd.Flags().BoolVar(&o.IncludeExtraPermissions, "extra-permissions", o.IncludeExtraPermissions, "Generate permissions required for features like namespace creation")
-	cmd.Flags().StringVar(&o.NamespaceSelector, "ns-selector", o.NamespaceSelector, "Create namespaced role bindings to matching namespaces.")
+	cmd.Flags().BoolVar(&opts.IncludeBootstrapRole, "bootstrap-role", true, "Create the bootstrap role (if it does not exist).")
+	cmd.Flags().BoolVar(&opts.IncludeExtraPermissions, "extra-permissions", false, "Generate permissions required for features like namespace creation")
+	cmd.Flags().StringVar(&opts.NamespaceSelector, "ns-selector", "", "Create namespaced role bindings to matching namespaces.")
+	cmd.Flags().StringVar(&opts.Image, "image", DefaultImage, "Controller image to use for the deployment.")
 
 	commander.ExitOnError(cmd)
 	return cmd
 }
 
 func (o *Options) initialize(ctx context.Context) error {
-	var manifests bytes.Buffer
-	manifests.Grow(2 << 18)
+
+	var (
+		err       error
+		manifests bytes.Buffer
+		namespace = os.Getenv("NAMESPACE")
+	)
+
+	inputs := []kio.Reader{}
+
+	for _, asset := range []assets.Asset{assets.RedskyopsDevExperiments, assets.RedskyopsDevTrials, assets.Role, assets.RbacRoleBinding, assets.Manager} {
+		if _, err = asset.InjectMetadata(namespace, defaultLabels); err != nil {
+			return err
+		}
+
+		r, err := asset.Reader()
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, &kio.ByteReader{Reader: r})
+	}
 
 	// Generate all of the manifests using a kyaml pipeline
 	p := kio.Pipeline{
-		Inputs: []kio.Reader{
-			&kio.ByteReader{Reader: o.generateInstall()},
-			&kio.ByteReader{Reader: o.generateControllerRBAC()},
-			&kio.ByteReader{Reader: o.generateSecret()},
-		},
+		Inputs:  inputs,
 		Filters: []kio.Filter{kio.FilterFunc(o.filter)},
 		Outputs: []kio.Writer{kio.ByteWriter{Writer: &manifests}},
 	}
 
 	// Execute the pipeline to populate the manifests buffer
-	if err := p.Execute(); err != nil {
+	if err = p.Execute(); err != nil {
 		return err
 	}
 
-	// Run `kubectl apply` to install the product
-	// TODO Handle upgrades with "--prune", "--selector", "app.kubernetes.io/name=redskyops,app.kubernetes.io/managed-by=%s"
-	kubectlApply, err := o.Config.Kubectl(ctx, "apply", "-f", "-")
-	if err != nil {
-		return err
-	}
-	kubectlApply.Stdout = o.Out
-	kubectlApply.Stderr = o.ErrOut
-	kubectlApply.Stdin = &manifests
-	if err := kubectlApply.Run(); err != nil {
-		return err
-	}
+	fmt.Println(manifests.String())
 	return nil
+	/*
+
+		// Run `kubectl apply` to install the product
+		// TODO Handle upgrades with "--prune", "--selector", "app.kubernetes.io/name=redskyops,app.kubernetes.io/managed-by=%s"
+		kubectlApply, err := o.Config.Kubectl(ctx, "apply", "-f", "-")
+		if err != nil {
+			return err
+		}
+		kubectlApply.Stdout = o.Out
+		kubectlApply.Stderr = o.ErrOut
+		kubectlApply.Stdin = &manifests
+		if err := kubectlApply.Run(); err != nil {
+			return err
+		}
+		return nil
+	*/
 }
 
 func (o *Options) generateInstall() io.Reader {

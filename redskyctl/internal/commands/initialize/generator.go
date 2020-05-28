@@ -92,6 +92,6 @@ func (o *GeneratorOptions) generate(ctx context.Context) error {
 	// TODO Should we buffer this and verify we got valid YAML?
 	kubectlRun.Stdout = o.Out
 	// TODO What is the best way to filter out the "Error attaching, ..." line from the writer?
-	// kubectlRun.Stderr = o.ErrOut
+	kubectlRun.Stderr = o.ErrOut
 	return kubectlRun.Run()
 }
